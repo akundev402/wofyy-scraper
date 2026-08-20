@@ -2,46 +2,55 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
+import time
 
-# Koneksi ke Supabase menggunakan Environment Variables (Nanti kita setting di GitHub)
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+# Inisialisasi Koneksi Supabase
+supabase: Client = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-def run_scraper():
-    print("Memulai proses scraping data komik...")
+def scrape_doujindesu(url):
+    # Header yang kuat untuk menyamarkan bot menjadi browser asli
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.google.com/"
+    }
     
-    # CONTOH: Kita ambil data dari web sumber (Contoh target uji coba)
-    # Anda bisa mengganti URL ini nanti dengan target situs komik pilihan Anda
-    target_url = "https://bato.to/" # atau situs komik lain
-    
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    print(f"Mencoba mengakses: {url}")
     
     try:
-        response = requests.get(target_url, headers=headers)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Contoh logika mengambil elemen komik (disesuaikan dengan target web)
-            # Ini adalah kerangka dasar untuk menyimpan data ke Supabase
-            sample_comic = {
-                "title": "Contoh Judul Otomatis",
-                "cover_url": "https://via.placeholder.com/150",
-                "chapter": "Ch. 1",
-                "type": "manhwa",
-                "source_url": target_url
-            }
-            
-            # Masukkan ke database Supabase tabel 'comics'
-            data, count = supabase.table("comics").insert(sample_comic).execute()
-            print("Berhasil memasukkan data ke Supabase:", data)
-        else:
-            print("Gagal mengakses situs target, status code:", response.status_code)
-            
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"Gagal! Status code: {response.status_code}")
+            return
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # PERHATIAN: Selector ini mungkin perlu disesuaikan 
+        # karena ini adalah URL halaman utama (Home), bukan URL spesifik satu komik.
+        # Untuk sementara kita ambil judul pertama yang muncul.
+        
+        title_element = soup.select_one('h3.title') or soup.select_one('.entry-title')
+        title = title_element.text.strip() if title_element else "Judul Uji Coba (Elemen tidak ditemukan)"
+        
+        img_element = soup.select_one('.thumb img') or soup.select_one('img')
+        cover_url = img_element.get('src') if img_element else ""
+        
+        data = {
+            "title": title,
+            "cover_url": cover_url,
+            "source_url": url,
+            "is_18plus": True
+        }
+        
+        print(f"Data yang akan dikirim: {data}")
+        
+        # Kirim ke database
+        supabase.table("comics").insert(data).execute()
+        print(f"✅ Sukses menyimpan data ke database!")
+        
     except Exception as e:
-        print("Terjadi error:", str(e))
+        print(f"❌ Error saat menjalankan skrip: {e}")
 
 if __name__ == "__main__":
-    run_scraper()
-
+    target_url = "https://doujin.desu.xxx/?ref=porndude"
+    scrape_doujindesu(target_url)
